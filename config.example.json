@@ -1,0 +1,13 @@
+{
+  "username": "usuario_exemplo",
+  "port": "8443",
+  "last_ip": "192.0.2.1",
+  "wlan_company_filter": "",
+  "validate_cpf_online": true,
+  "theme": "light",
+  "custom_ips": [],
+  "excluded_ips": [],
+  "log_rotation": "daily",
+  "log_retention": 30,
+  "log_level": "INFO"
+}

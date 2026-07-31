@@ -1,0 +1,11 @@
+# UniFi WiFi Manager - Dependências
+# pip install -r requirements.txt
+
+# Interface gráfica moderna
+customtkinter>=5.2.0
+
+# Requisições HTTP à API do UniFi Controller
+requests>=2.31.0
+
+# Geração de relatórios em PDF (opcional; sem ele, o relatório sai em TXT)
+reportlab>=4.0.0

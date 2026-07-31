@@ -1,0 +1,11 @@
+Coloque aqui o ícone da aplicação.
+
+Formatos suportados:
+  - .ico  → Usado no Windows (barra de tarefas, título da janela, .exe)
+  - .png  → Usado no Linux/Mac e como logo no header
+
+Para criar o .exe com o ícone:
+  pip install pyinstaller
+  pyinstaller --onefile --windowed --icon=resources/icon/seu_icone.ico main.py
+
+O app detecta automaticamente o primeiro arquivo .ico ou .png nesta pasta.
