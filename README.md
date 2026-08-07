@@ -70,4 +70,7 @@ wifi_manager/
 
 ## 📄 Licença
 
-Distribuído sob a licença MIT. Veja [LICENSE](LICENSE).
+> ⚠️ **Repositório disponibilizado apenas para portfólio.** O código pode
+> ser visualizado, mas **não** pode ser copiado, baixado, usado ou
+> reaproveitado em outros projetos. Veja a seção [Licença](#-licença) e o
+> arquivo [`LICENSE`](./LICENSE).
