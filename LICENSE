@@ -1,21 +1,57 @@
-MIT License
+Copyright (c) 2026 Lucas Veríssimo. Todos os direitos reservados.
 
-Copyright (c) 2026 Lucas Veríssimo
+LICENÇA DE APENAS VISUALIZAÇÃO (VIEW-ONLY LICENSE)
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Este repositório é disponibilizado publicamente exclusivamente para fins de
+demonstração e avaliação de portfólio. NÃO se trata de software livre nem de
+código aberto (open source), apesar de o código estar visível publicamente.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+1. PERMISSÕES
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+   É permitido apenas:
+   a) Visualizar o código-fonte deste repositório através da interface do
+      GitHub (ou plataforma equivalente) para fins de avaliação de
+      portfólio, recrutamento ou revisão técnica.
+
+2. PROIBIÇÕES
+
+   Sem autorização prévia e por escrito do autor, é expressamente proibido:
+   a) Copiar, reproduzir, baixar (clone/download/fork mantido) ou
+      armazenar este código, no todo ou em parte;
+   b) Usar, executar, instalar ou implantar este código, no todo ou em
+      parte, em qualquer ambiente ou finalidade;
+   c) Modificar, adaptar ou criar obras derivadas a partir deste código;
+   d) Redistribuir, sublicenciar, publicar ou disponibilizar este código,
+      no todo ou em parte, em qualquer outro repositório, produto ou meio;
+   e) Utilizar este código, no todo ou em parte, em projetos pessoais,
+      acadêmicos ou comerciais, próprios ou de terceiros;
+   f) Utilizar este código para treinar, ajustar (fine-tuning) ou avaliar
+      modelos de aprendizado de máquina ou inteligência artificial.
+
+3. AUSÊNCIA DE LICENÇA DE USO
+
+   Nenhuma disposição deste documento deve ser interpretada como concessão,
+   por implicação, preclusão (estoppel) ou qualquer outro meio, de licença
+   ou direito sobre qualquer patente, marca, direito autoral ou outro
+   direito de propriedade intelectual do autor, além do direito de
+   visualização descrito na Seção 1.
+
+4. ISENÇÃO DE GARANTIAS
+
+   ESTE CÓDIGO É DISPONIBILIZADO "NO ESTADO EM QUE SE ENCONTRA" (AS IS),
+   SEM GARANTIA DE QUALQUER TIPO, EXPRESSA OU IMPLÍCITA. O AUTOR NÃO SE
+   RESPONSABILIZA POR QUALQUER DANO DECORRENTE DO USO NÃO AUTORIZADO DESTE
+   CÓDIGO.
+
+5. CONTATO
+
+   Para solicitar permissão de uso além do escopo desta licença, entre em
+   contato diretamente com o autor.
+
+---
+
+Nota: por não ser uma licença reconhecida pela Open Source Initiative (OSI),
+este repositório não deve ser rotulado como "open source". Na ausência de
+uma licença explícita, a legislação de direitos autorais já reserva
+automaticamente todos os direitos ao autor — este arquivo apenas torna essa
+condição explícita e detalha o que é (e o que não é) permitido.
