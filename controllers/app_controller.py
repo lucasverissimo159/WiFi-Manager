@@ -93,6 +93,8 @@ class AppController:
         w.btn_save_cfg.configure(command=self._on_save_settings)
         w.btn_toggle_pass.configure(command=self._toggle_pass)
         w.btn_add_ip.configure(command=self._on_add_custom_ip)
+        w.mode_switch.configure(command=self._on_mode_changed)
+        w.btn_add_site.configure(command=self._on_add_site)
         w.btn_scan_all.configure(command=self._on_scan_all)
         w.entry_search.bind("<KeyRelease>", lambda e: (self._scroll_overview_to_top(), self._filter_overview()))
         w.hosts_search.bind("<KeyRelease>", lambda e: self._filter_hosts_list())
@@ -125,6 +127,38 @@ class AppController:
         custom = self.config.get("custom_ips", [])
         excluded = set(self.config.get("excluded_ips", []))
         return [l["ip"] for l in gerar_ips_lojas(port, custom) if l["ip"] not in excluded]
+
+    def _targets(self) -> list[dict]:
+        """Lista unificada de alvos a monitorar, conforme o modo ativo.
+
+        Cada alvo é um dict com:
+          key   -> identificador único da linha/overview
+          host  -> IP/host para conectar
+          site  -> código do site UniFi (/api/s/<site>/...)
+          label -> texto exibido (IP no modo controlador; nome da loja no modo site)
+
+        - modo "controller": uma loja por IP (site "default").
+        - modo "site":       um host central + um alvo por site cadastrado.
+        """
+        port = self.config.get("port", "8443")
+        mode = self.config.get("mode", "controller")
+
+        if mode == "site":
+            host = (self.config.get("central_host", "") or "").strip()
+            targets = []
+            for s in self.config.get("sites", []):
+                code = (s.get("code") or "").strip()
+                name = (s.get("name") or code).strip()
+                if host and code:
+                    targets.append({"key": code, "host": host, "site": code,
+                                    "label": name or code})
+            return targets
+
+        # modo "controller" (padrão)
+        excluded = set(self.config.get("excluded_ips", []))
+        custom = self.config.get("custom_ips", [])
+        return [{"key": l["ip"], "host": l["ip"], "site": "default", "label": l["ip"]}
+                for l in gerar_ips_lojas(port, custom) if l["ip"] not in excluded]
 
     def _on_ip_keyrelease(self):
         query = self.window.entry_ip.get().strip()
@@ -204,6 +238,21 @@ class AppController:
             w.cfg_port.delete(0, "end")
             w.cfg_port.insert(0, cfg.get("port"))
         w.switch_online.set(cfg.get("validate_cpf_online", True))
+
+        # Modo de conexão (controller/site) + dados do controlador central
+        if cfg.get("central_host"):
+            try:
+                w.cfg_central_host.insert(0, cfg.get("central_host"))
+            except Exception:
+                pass
+        mode = cfg.get("mode", "controller")
+        try:
+            w.mode_switch.set("Site" if mode == "site" else "Controlador")
+            w.show_connection_mode(mode)
+        except Exception:
+            pass
+        self._refresh_sites_ui()
+        self._refresh_site_picker()
 
     # ════════════════════════════════════════
     #  TEMA — TROCA INSTANTÂNEA VIA REBUILD
@@ -386,9 +435,16 @@ class AppController:
         if not pw:
             messagebox.showwarning("Atenção", "Informe a senha.")
             return
+        central = ""
+        try:
+            central = w.cfg_central_host.get().strip()
+        except Exception:
+            central = self.config.get("central_host", "")
         self.config.update(username=user, password=pw, port=port,
+                           central_host=central,
                            validate_cpf_online=w.switch_online.get())
         self.config.save()
+        self._refresh_site_picker()
         w.lbl_cfg_status.configure(text=f"✓  Salvo em {datetime.now().strftime('%H:%M:%S')}",
                                     text_color=COLORS["accent_green"])
         self._log("Configurações salvas.", "success")
@@ -646,27 +702,205 @@ class AppController:
 
     def _on_connect(self):
         w = self.window
-        ip = w.entry_ip.get().strip()
-        if not ip:
-            messagebox.showwarning("Atenção", "Informe o IP.")
-            return
+        mode = self.config.get("mode", "controller")
         creds = self._get_creds()
         if not creds:
             messagebox.showwarning("Config", "Defina credenciais na aba Configurações.")
             self._switch_tab("settings")
             return
         user, pw, port = creds
-        self.config.set("last_ip", ip)
-        self.config.save()
+
+        if mode == "site":
+            host = (self.config.get("central_host", "") or "").strip()
+            if not host:
+                messagebox.showwarning("Atenção",
+                                       "Defina o IP do controlador central na aba Configurações.")
+                self._switch_tab("settings")
+                return
+            code = self._selected_site_code()
+            if not code:
+                messagebox.showwarning("Atenção", "Selecione (ou cadastre) uma loja/site.")
+                self._switch_tab("settings")
+                return
+            site = code
+            label = self._site_label_for_code(code) or code
+            self.config.set("last_site", code)
+            self.config.save()
+            target_desc = f"{label} [site {code}] em {host}:{port}"
+        else:
+            host = w.entry_ip.get().strip()
+            if not host:
+                messagebox.showwarning("Atenção", "Informe o IP.")
+                return
+            site = "default"
+            self.config.set("last_ip", host)
+            self.config.save()
+            target_desc = f"{host}:{port}"
+
         w.btn_connect.configure(state="disabled", text="Conectando...")
-        self._log(f"Conectando a {ip}:{port}...")
+        self._log(f"Conectando a {target_desc}...")
 
         def _work():
-            self.unifi = UniFiController(ip, port, user, pw)
+            self.unifi = UniFiController(host, port, user, pw, site=site)
             ok, msg = self.unifi.login()
             w.after(0, lambda: self._on_connect_done(ok, msg))
 
         threading.Thread(target=_work, daemon=True).start()
+
+    # ════════════════════════════════════════
+    #  MODO SITE (controlador centralizado)
+    # ════════════════════════════════════════
+
+    def _site_display(self, name, code):
+        """Texto exibido no seletor de sites: 'Nome  (codigo)'."""
+        return f"{name}  ({code})"
+
+    def _site_options(self):
+        """Retorna [(name, code)] dos sites cadastrados e válidos."""
+        out = []
+        for s in self.config.get("sites", []):
+            code = (s.get("code") or "").strip()
+            name = (s.get("name") or code).strip()
+            if code:
+                out.append((name or code, code))
+        return out
+
+    def _site_label_for_code(self, code):
+        for name, c in self._site_options():
+            if c == code:
+                return name
+        return code
+
+    def _selected_site_code(self):
+        """Código do site atualmente selecionado no seletor (ou o 1º disponível)."""
+        opts = self._site_options()
+        if not opts:
+            return ""
+        try:
+            sel = self.window.site_picker.get().strip()
+        except Exception:
+            sel = ""
+        for name, code in opts:
+            if self._site_display(name, code) == sel:
+                return code
+        return opts[0][1]
+
+    @staticmethod
+    def _extract_site_code(text: str) -> str:
+        """Extrai o código do site de um texto que pode ser a URL do UniFi.
+
+        Ex.: 'https://192.0.2.1:8443/manage/site/ab12cd34/dashboard' -> 'ab12cd34'
+        Se não houver '/site/<code>', devolve o próprio texto (sem espaços).
+        """
+        text = (text or "").strip()
+        m = re.search(r'/site/([A-Za-z0-9]+)', text)
+        if m:
+            return m.group(1)
+        return text
+
+    def _refresh_site_picker(self):
+        """Atualiza os valores do seletor de sites na aba Conexão."""
+        w = self.window
+        picker = getattr(w, "site_picker", None)
+        if picker is None:
+            return
+        opts = self._site_options()
+        values = [self._site_display(n, c) for n, c in opts] or ["(nenhum site cadastrado)"]
+        try:
+            picker.configure(values=values)
+            last = self.config.get("last_site", "")
+            target = next((self._site_display(n, c) for n, c in opts if c == last), None)
+            picker.set(target or values[0])
+        except Exception:
+            pass
+
+    def _on_mode_changed(self, mode):
+        """Alterna entre 'Controlador' (IP por loja) e 'Site' (host central)."""
+        mode = "site" if str(mode).lower().startswith("site") else "controller"
+        self.config.set("mode", mode)
+        self.config.save()
+        try:
+            self.window.show_connection_mode(mode)
+        except Exception:
+            pass
+        if mode == "site":
+            self._refresh_site_picker()
+        self._log("Modo de conexão: "
+                  + ("Site (controlador central)" if mode == "site"
+                     else "Controlador (IP por loja)") + ".")
+        # A overview é chaveada de formas diferentes por modo -> limpa e refaz
+        self._reset_overview_and_rescan()
+
+    def _on_add_site(self):
+        """Cadastra um site (nome + código) no modo centralizado."""
+        w = self.window
+        name = w.entry_site_name.get().strip()
+        code = self._extract_site_code(w.entry_site_code.get())
+        if not name or not code:
+            self._show_site_status("⚠  Informe nome e código do site.", warning=True)
+            return
+        if not re.match(r'^[A-Za-z0-9]+$', code):
+            self._show_site_status(f"⚠  Código inválido: '{code}'.", warning=True)
+            return
+        sites = self.config.get("sites", [])
+        if any((s.get("code") or "").strip() == code for s in sites):
+            self._show_site_status(f"⚠  O código '{code}' já está cadastrado.", warning=True)
+            return
+        sites.append({"name": name, "code": code})
+        self.config.set("sites", sites)
+        self.config.save()
+        w.entry_site_name.delete(0, "end")
+        w.entry_site_code.delete(0, "end")
+        self._refresh_sites_ui()
+        self._refresh_site_picker()
+        self._log(f"Site cadastrado: {name} [{code}]", "success")
+        self._show_site_status(f"✓  {name} adicionado.")
+
+    def _on_remove_site(self, code):
+        sites = [s for s in self.config.get("sites", [])
+                 if (s.get("code") or "").strip() != code]
+        self.config.set("sites", sites)
+        self.config.save()
+        self._refresh_sites_ui()
+        self._refresh_site_picker()
+        self._log(f"Site removido: {code}", "warning")
+
+    def _show_site_status(self, text, warning=False):
+        try:
+            self.window.lbl_site_status.configure(
+                text=text,
+                text_color=COLORS["accent_orange"] if warning else COLORS["accent_green"])
+        except Exception:
+            pass
+
+    def _refresh_sites_ui(self):
+        """Reconstrói a lista de sites cadastrados na aba Configurações."""
+        w = self.window
+        holder = getattr(w, "sites_list", None)
+        if holder is None:
+            return
+        for child in list(holder.winfo_children()):
+            try:
+                child.destroy()
+            except Exception:
+                pass
+        opts = self._site_options()
+        if not opts:
+            ctk.CTkLabel(holder, text="Nenhum site cadastrado.", font=FONTS["small"],
+                          text_color=COLORS["text_muted"]).pack(anchor="w", padx=4, pady=4)
+            return
+        for name, code in opts:
+            row = ctk.CTkFrame(holder, fg_color=COLORS["bg_card"], corner_radius=6)
+            row.pack(fill="x", pady=2)
+            ctk.CTkLabel(row, text=f"{name}", font=FONTS["small_bold"],
+                          text_color=COLORS["text_primary"]).pack(side="left", padx=(10, 6), pady=6)
+            ctk.CTkLabel(row, text=f"({code})", font=FONTS["mono_small"],
+                          text_color=COLORS["text_muted"]).pack(side="left")
+            ctk.CTkButton(row, text="✕", width=32, height=28, font=FONTS["small_bold"],
+                           fg_color=COLORS["btn_secondary"], hover_color=COLORS["bg_hover"],
+                           border_width=1, border_color=COLORS["border"],
+                           text_color=COLORS["accent_red"],
+                           command=lambda c=code: self._on_remove_site(c)).pack(side="right", padx=8, pady=6)
 
     def _on_connect_done(self, ok, msg):
         w = self.window
@@ -1160,31 +1394,26 @@ class AppController:
 
         self._scan_running = True
         user, pw, port = creds
-        custom = self.config.get("custom_ips", [])
-        lojas = gerar_ips_lojas(port, custom)
-        total = len(lojas)
+        targets = self._targets()   # modo controller (IPs) ou site (sites cadastrados)
+        total = len(targets)
         w = self.window
         w.btn_scan_all.configure(state="disabled", text="Escaneando...")
         w.lbl_scan_progress.configure(text=f"0 / {total}")
 
-        # Filtra IPs excluídos pelo usuário
-        excluded = set(self.config.get("excluded_ips", []))
-        lojas = [l for l in lojas if l["ip"] not in excluded]
-
-        # Na primeira vez cria todas as linhas; nas seguintes adiciona apenas IPs novos
-        ips_novos = [l["ip"] for l in lojas]
-        ips_existentes = set(self._overview_rows.keys())
-        if not ips_existentes:
+        # Na primeira vez cria todas as linhas; nas seguintes adiciona só as novas
+        keys_novos = [t["key"] for t in targets]
+        keys_existentes = set(self._overview_rows.keys())
+        if not keys_existentes:
             for child in w.overview_scroll.winfo_children():
                 child.destroy()
-            self._overview_order = list(ips_novos)
-            for ip in ips_novos:
-                self._create_row(ip)
+            self._overview_order = list(keys_novos)
+            for t in targets:
+                self._create_row(t["key"], t["label"])
         else:
-            for ip in ips_novos:
-                if ip not in ips_existentes:
-                    self._overview_order.append(ip)
-                    self._create_row(ip)
+            for t in targets:
+                if t["key"] not in keys_existentes:
+                    self._overview_order.append(t["key"])
+                    self._create_row(t["key"], t["label"])
 
         # Esvaziar fila de scan anterior (segurança)
         while not self._scan_queue.empty():
@@ -1197,17 +1426,18 @@ class AppController:
             done = 0
             try:
                 with ThreadPoolExecutor(max_workers=15) as pool:
-                    futs = {pool.submit(self._probe, ip_s, port, user, pw): ip_s for ip_s in ips_novos}
+                    futs = {pool.submit(self._probe, t["host"], port, user, pw, t["site"]): t["key"]
+                            for t in targets}
                     for f in as_completed(futs):
                         if self._closing:
                             return
-                        ip_s = futs[f]
+                        key = futs[f]
                         try:
                             r = f.result()
                         except Exception:
                             r = {"status": "error", "wlans": [], "clients": []}
                         done += 1
-                        self._scan_queue.put((token, ip_s, r, done, total))
+                        self._scan_queue.put((token, key, r, done, total))
                 if not self._closing:
                     self._scan_queue.put((token, None, None, done, total))
             except (KeyboardInterrupt, SystemExit):
@@ -1280,8 +1510,8 @@ class AppController:
             150, lambda: self._process_scan_queue(token, total)
         )
 
-    def _probe(self, ip, port, user, pw):
-        ctrl = UniFiController(ip, port, user, pw)
+    def _probe(self, host, port, user, pw, site="default"):
+        ctrl = UniFiController(host, port, user, pw, site=site)
         ok, _ = ctrl.login()
         if not ok:
             return {"status": "offline", "wlans": [], "clients": []}
@@ -1301,8 +1531,9 @@ class AppController:
         status = "online" if clientes_on else "offline"
         return {"status": status, "wlans": wlans, "clients": clients}
 
-    def _create_row(self, ip):
+    def _create_row(self, key, label=None):
         w = self.window
+        label = label if label is not None else key
         container = ctk.CTkFrame(w.overview_scroll, fg_color="transparent")
         container.pack(fill="x", pady=1)
         header = ctk.CTkFrame(container, fg_color=COLORS["bg_card"], corner_radius=6,
@@ -1311,9 +1542,9 @@ class AppController:
         btn = ctk.CTkButton(header, text="+", width=32, height=28, corner_radius=4,
                               font=FONTS["body_bold"], fg_color=COLORS["bg_input"],
                               hover_color=COLORS["bg_hover"], text_color=COLORS["text_primary"],
-                              command=lambda: self._toggle_row(ip))
+                              command=lambda: self._toggle_row(key))
         btn.pack(side="left", padx=(8, 6), pady=6)
-        ctk.CTkLabel(header, text=ip, font=FONTS["mono_bold"],
+        ctk.CTkLabel(header, text=label, font=FONTS["mono_bold"],
                       text_color=COLORS["text_primary"], width=160).pack(side="left")
         badge = ctk.CTkLabel(header, text="...", font=FONTS["badge"],
                               text_color=COLORS["text_muted"], fg_color=COLORS["bg_input"],
@@ -1322,8 +1553,9 @@ class AppController:
         lbl = ctk.CTkLabel(header, text="", font=FONTS["small"], text_color=COLORS["text_muted"])
         lbl.pack(side="right", padx=(0, 12))
         det = ctk.CTkFrame(container, fg_color=COLORS["bg_input"], corner_radius=6)
-        self._overview_rows[ip] = {"container": container, "btn": btn, "badge": badge,
-                                    "lbl": lbl, "det": det, "expanded": False, "data": None}
+        self._overview_rows[key] = {"container": container, "btn": btn, "badge": badge,
+                                    "lbl": lbl, "det": det, "expanded": False, "data": None,
+                                    "label": label}
 
     def _update_row(self, ip, result, done, total, token=None):
         if token is not None and token != self._active_scan_token:
@@ -1489,10 +1721,19 @@ class AppController:
         except Exception:
             return (999, 999, 999, 999)
 
-    def _filter_overview(self):
-        """Filtra linhas por IP (texto) e por status (all/online/offline).
+    def _row_sort_key(self, key):
+        """Chave de ordenação da overview.
 
-        Exibe sempre em ordem crescente de IP (numerico), do menor ao maior.
+        Modo controller: numérica por IP. Modo site: alfabética pelo nome da loja.
+        """
+        if self.config.get("mode", "controller") == "site":
+            row = self._overview_rows.get(key) or {}
+            return (row.get("label") or key).lower()
+        return self._ip_sort_key(key)
+
+    def _filter_overview(self):
+        """Filtra linhas por texto (IP ou nome da loja) e por status.
+
         Não altera o estado visual dos itens que ainda estão sendo escaneados.
         """
         if self._closing:
@@ -1501,9 +1742,9 @@ class AppController:
         query         = self.window.entry_search.get().strip().lower()
         status_filter = self.window.overview_filter_var.get()
 
-        # Ordenação crescente por IP (numérica, não lexicográfica)
+        # Ordenação: por IP (controller) ou por nome da loja (site)
         all_ips     = list(self._overview_rows.keys())
-        sorted_ips  = sorted(all_ips, key=self._ip_sort_key)
+        sorted_ips  = sorted(all_ips, key=self._row_sort_key)
 
         visible   = []
         invisible = []
@@ -1513,7 +1754,8 @@ class AppController:
             if not row:
                 continue
             try:
-                ip_match = not query or query in ip
+                label = (row.get("label") or "").lower()
+                ip_match = not query or query in ip.lower() or query in label
 
                 data = row.get("data")
                 if status_filter == "all":

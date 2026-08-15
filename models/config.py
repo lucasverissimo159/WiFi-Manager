@@ -19,6 +19,13 @@ class ConfigManager:
         "port": "8443",
         "last_ip": "",
         "wlan_company_filter": "",  # palavra-chave do SSID da empresa (local)
+        # Modo de conexão:
+        #   "controller" -> uma loja por controlador/IP (site "default")
+        #   "site"       -> um controlador central + várias lojas como sites
+        "mode": "controller",
+        "central_host": "",         # IP/host do controlador central (modo "site")
+        "sites": [],                # lista de {"name": ..., "code": ...} (modo "site")
+        "last_site": "",            # código do último site conectado
         "validate_cpf_online": True,
         "theme": "dark",
         "custom_ips": [],

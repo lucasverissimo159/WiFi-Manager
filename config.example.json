@@ -3,6 +3,13 @@
   "port": "8443",
   "last_ip": "192.0.2.1",
   "wlan_company_filter": "",
+  "mode": "controller",
+  "central_host": "192.0.2.1",
+  "sites": [
+    {"name": "Loja A", "code": "site0001"},
+    {"name": "Loja B", "code": "site0002"}
+  ],
+  "last_site": "",
   "validate_cpf_online": true,
   "theme": "light",
   "custom_ips": [],

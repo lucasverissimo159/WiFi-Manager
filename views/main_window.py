@@ -188,31 +188,61 @@ class MainWindow(ctk.CTk):
         # Conexão
         c1 = self._card(p); c1.pack(fill="x", pady=(0, 10))
         self._sec(c1, "CONEXÃO RÁPIDA")
-        ctk.CTkLabel(c1, text="IP do Controller", font=FONTS["small"],
-                      text_color=COLORS["text_muted"]).pack(anchor="w", padx=16)
-        self.entry_ip = ctk.CTkEntry(c1, placeholder_text="Ex: 192.0.2.1",
+
+        # Toggle de modo: Controlador (IP por loja)  |  Site (controlador central)
+        self.mode_switch = ctk.CTkSegmentedButton(
+            c1, values=["Controlador", "Site"], font=FONTS["small_bold"],
+            selected_color=COLORS["accent_blue"], selected_hover_color=COLORS["hover_blue"],
+            unselected_color=COLORS["bg_input"], unselected_hover_color=COLORS["bg_hover"],
+            text_color=COLORS["text_primary"])
+        self.mode_switch.set("Controlador")
+        self.mode_switch.pack(fill="x", padx=16, pady=(2, 8))
+
+        # Corpo dinâmico da conexão (alterna entre os dois sub-frames)
+        self.conn_body = ctk.CTkFrame(c1, fg_color="transparent")
+        self.conn_body.pack(fill="x", padx=16)
+
+        # --- Modo Controlador: campo de IP ---
+        self.conn_controller_frame = ctk.CTkFrame(self.conn_body, fg_color="transparent")
+        ctk.CTkLabel(self.conn_controller_frame, text="IP do Controller", font=FONTS["small"],
+                      text_color=COLORS["text_muted"]).pack(anchor="w")
+        self.entry_ip = ctk.CTkEntry(self.conn_controller_frame, placeholder_text="Ex: 192.0.2.1",
                                       font=(FONTS["mono"][0], 13), height=40,
                                       fg_color=COLORS["bg_input"], border_color=COLORS["border"],
                                       text_color=COLORS["text_primary"])
-        self.entry_ip.pack(fill="x", padx=16, pady=(2, 6))
-        # Dropdown de autocomplete — filho da janela RAIZ com place(), flutua sobre tudo
+        self.entry_ip.pack(fill="x", pady=(2, 6))
+
+        # --- Modo Site: seletor da loja (site) ---
+        self.conn_site_frame = ctk.CTkFrame(self.conn_body, fg_color="transparent")
+        ctk.CTkLabel(self.conn_site_frame, text="Loja (site)", font=FONTS["small"],
+                      text_color=COLORS["text_muted"]).pack(anchor="w")
+        self.site_picker = ctk.CTkOptionMenu(
+            self.conn_site_frame, values=["(nenhum site cadastrado)"], font=FONTS["body"], height=40,
+            fg_color=COLORS["bg_input"], button_color=COLORS["accent_blue"],
+            button_hover_color=COLORS["hover_blue"], text_color=COLORS["text_primary"])
+        self.site_picker.pack(fill="x", pady=(2, 4))
+        ctk.CTkLabel(self.conn_site_frame,
+                      text="Controlador central e sites → aba Configurações",
+                      font=FONTS["tiny"], text_color=COLORS["text_muted"],
+                      wraplength=250).pack(anchor="w", pady=(0, 2))
+
+        # Dropdown de autocomplete do IP (só usado no modo Controlador)
         self._ip_dropdown_outer = tk.Frame(self, bg=COLORS["border"], bd=0)
         self.ip_dropdown = ctk.CTkScrollableFrame(
-            self._ip_dropdown_outer,
-            fg_color=COLORS["bg_card"],
-            corner_radius=6,
-            border_width=1,
-            border_color=COLORS["border"],
-            height=172)
+            self._ip_dropdown_outer, fg_color=COLORS["bg_card"], corner_radius=6,
+            border_width=1, border_color=COLORS["border"], height=172)
         self.ip_dropdown.pack(fill="both", expand=True)
-        # Começa oculto; controller posiciona via place() com coordenadas absolutas
+
         ctk.CTkLabel(c1, text="Credenciais → aba Configurações",
                       font=FONTS["tiny"], text_color=COLORS["text_muted"],
-                      wraplength=250).pack(anchor="w", padx=16, pady=(0, 4))
+                      wraplength=250).pack(anchor="w", padx=16, pady=(4, 4))
         self.btn_connect = ctk.CTkButton(c1, text="Conectar", font=FONTS["body_bold"], height=42,
                                           fg_color=COLORS["accent_blue"], hover_color=COLORS["hover_blue"],
                                           text_color="#FFFFFF")
         self.btn_connect.pack(fill="x", padx=16, pady=(4, 16))
+
+        # Mostra o sub-frame do modo atual (padrão: Controlador)
+        self.show_connection_mode("controller")
 
         # Ações
         c2 = self._card(p); c2.pack(fill="x")
@@ -235,6 +265,18 @@ class MainWindow(ctk.CTk):
                                          height=DIMS["btn_height_normal"], fg_color=COLORS["accent_purple"],
                                          hover_color=COLORS["hover_purple"], text_color="#FFFFFF", state="disabled")
         self.btn_report.pack(fill="x", padx=16, pady=(0, 16))
+
+    def show_connection_mode(self, mode):
+        """Alterna a área de conexão entre IP (Controlador) e seletor de site."""
+        try:
+            self.conn_controller_frame.pack_forget()
+            self.conn_site_frame.pack_forget()
+        except Exception:
+            pass
+        if str(mode) == "site":
+            self.conn_site_frame.pack(fill="x")
+        else:
+            self.conn_controller_frame.pack(fill="x")
 
     def _build_center(self, parent):
         panel = ctk.CTkFrame(parent, fg_color=COLORS["bg_main"])
@@ -362,6 +404,48 @@ class MainWindow(ctk.CTk):
         self.lbl_add_ip_status.pack(anchor="w", padx=16, pady=(4, 2))
         ctk.CTkLabel(f, text="💡 Para remover hosts acesse a aba  🖥 Hosts",
                       font=FONTS["tiny"], text_color=COLORS["text_muted"]).pack(anchor="w", padx=16, pady=(0, 14))
+
+        self._div(f)
+
+        # ── Modo Site: controlador central + cadastro de sites ──
+        ctk.CTkLabel(f, text="CONTROLADOR CENTRAL (MODO SITE)", font=FONTS["section"],
+                      text_color=COLORS["accent_blue"]).pack(anchor="w", padx=16, pady=(12, 2))
+        ctk.CTkLabel(f, text="Um único controlador; cada loja é um site. O código fica na URL, "
+                             "após /site/ (ex.: .../manage/site/ab12cd34/dashboard → ab12cd34).",
+                      font=FONTS["small"], text_color=COLORS["text_muted"],
+                      wraplength=500).pack(anchor="w", padx=16, pady=(0, 8))
+
+        ctk.CTkLabel(f, text="IP do controlador central", font=FONTS["small"],
+                      text_color=COLORS["text_secondary"]).pack(anchor="w", padx=16)
+        self.cfg_central_host = ctk.CTkEntry(f, placeholder_text="Ex: 192.0.2.1", font=FONTS["mono"],
+                                             height=36, fg_color=COLORS["bg_card"],
+                                             border_color=COLORS["border"],
+                                             text_color=COLORS["text_primary"], width=200)
+        self.cfg_central_host.pack(anchor="w", padx=16, pady=(2, 10))
+
+        ctk.CTkLabel(f, text="Cadastrar loja (site)", font=FONTS["small"],
+                      text_color=COLORS["text_secondary"]).pack(anchor="w", padx=16)
+        srow = ctk.CTkFrame(f, fg_color="transparent")
+        srow.pack(anchor="w", padx=16, fill="x", pady=(2, 6))
+        self.entry_site_name = ctk.CTkEntry(srow, placeholder_text="Nome (ex: Loja A)", font=FONTS["body"],
+                                            height=36, fg_color=COLORS["bg_card"],
+                                            border_color=COLORS["border"],
+                                            text_color=COLORS["text_primary"], width=150)
+        self.entry_site_name.pack(side="left")
+        self.entry_site_code = ctk.CTkEntry(srow, placeholder_text="Código ou URL do site",
+                                            font=FONTS["mono"], height=36, fg_color=COLORS["bg_card"],
+                                            border_color=COLORS["border"],
+                                            text_color=COLORS["text_primary"], width=200)
+        self.entry_site_code.pack(side="left", padx=(8, 0))
+        self.btn_add_site = ctk.CTkButton(srow, text="+ Site", font=FONTS["small_bold"], height=36,
+                                          width=80, fg_color=COLORS["accent_blue"],
+                                          hover_color=COLORS["hover_blue"], text_color="#FFFFFF")
+        self.btn_add_site.pack(side="left", padx=(8, 0))
+        self.lbl_site_status = ctk.CTkLabel(f, text="", font=FONTS["small"],
+                                            text_color=COLORS["accent_green"])
+        self.lbl_site_status.pack(anchor="w", padx=16, pady=(4, 2))
+        self.sites_list = ctk.CTkFrame(f, fg_color="transparent")
+        self.sites_list.pack(anchor="w", padx=16, fill="x", pady=(0, 14))
 
         self._div(f)
 

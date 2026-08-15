@@ -11,8 +11,12 @@ acesso de visitantes e gerar relatórios.
 
 ## ✨ Funcionalidades
 
-- 🔎 Descoberta e status de múltiplos controladores UniFi (mapa de rede)
-- 📡 Listagem de WLANs (SSIDs) e clientes online por controlador
+- 🔀 **Dois modos de conexão:**
+  - **Controlador** — uma loja por controlador/IP fixo (cada loja é uma LAN).
+  - **Site** — um **controlador central** e cada loja é um **site** do UniFi,
+    acessada pelo **código do site**.
+- 🔎 Descoberta e status de múltiplos controladores/sites UniFi (mapa de rede)
+- 📡 Listagem de WLANs (SSIDs) e clientes online por controlador/site
 - 🧾 Validação de CPF (offline + confirmação opcional via BrasilAPI)
 - 📊 Geração de relatórios (PDF via `reportlab`, com fallback para TXT)
 - 🎨 Interface moderna (CustomTkinter), tema claro/escuro
@@ -44,10 +48,34 @@ cp config.example.json config.json
 | `last_ip`             | Último controlador acessado.                                     |
 | `custom_ips`          | IPs adicionais de controladores a monitorar.                     |
 | `wlan_company_filter` | Palavra-chave do SSID da empresa usada para filtrar as WLANs.    |
+| `mode`                | `controller` (IP por loja) ou `site` (controlador central).      |
+| `central_host`        | IP/host do controlador central (usado no modo `site`).           |
+| `sites`               | Lista de `{ "name", "code" }` — lojas cadastradas no modo `site`.|
 
 O mapa de rede padrão (`models/network_map.py`) usa endereços de exemplo das
 faixas reservadas para documentação (**RFC 5737**). Cadastre os IPs reais das
 suas unidades em `custom_ips` no `config.json` local.
+
+### 🔀 Modos de conexão
+
+Alterne o modo no topo da área **Conexão** (segmentos **Controlador** / **Site**):
+
+- **Controlador** (padrão): informe o **IP** do controlador da loja e conecte.
+  Cada loja é uma LAN com seu próprio controlador (site `default`).
+- **Site** (controlador centralizado): na aba **Configurações**, informe o
+  **IP do controlador central** e cadastre cada loja como **nome + código do
+  site**. O código é o trecho após `/site/` na URL do UniFi, por exemplo:
+
+  ```
+  https://192.0.2.1:8443/manage/site/ab12cd34/dashboard
+                                     └── código do site ──┘
+  ```
+
+  Você pode colar o **código** ou a **URL inteira** no campo de código — o
+  sistema extrai o código automaticamente. Depois, na área **Conexão**, escolha
+  a loja no seletor e conecte. O usuário/senha são os mesmos para todos os
+  sites (a troca é apenas de site, como no seletor "Current site" do UniFi).
+  Internamente, cada requisição usa `/api/s/<código>/…`.
 
 ## 🗂️ Estrutura
 
