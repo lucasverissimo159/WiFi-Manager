@@ -1,4 +1,83 @@
-# 📶 UniFi WiFi Manager
+# 📶 UniFi WiFi Manager (English)
+
+Desktop application for **managing and monitoring Wi-Fi networks** based
+on **UniFi (Ubiquiti)** controllers. It allows checking the status of controllers
+from multiple units/stores, listing WLANs and connected clients, validating visitor
+access CPFs, and generating reports.
+
+![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)
+![CustomTkinter](https://img.shields.io/badge/CustomTkinter-5.2+-green.svg)
+![License](https://img.shields.io/badge/License-MIT-yellow.svg)
+
+## ✨ Features
+
+- 🔎 Discovery and status of multiple UniFi controllers (network map)
+- 📡 Listing of WLANs (SSIDs) and online clients per controller
+- 🧾 CPF validation (offline + optional confirmation via BrasilAPI)
+- 📊 Report generation (PDF via `reportlab`, with fallback to TXT)
+- 🎨 Modern interface (CustomTkinter), light/dark theme
+
+## 🚀 Installation
+
+```bash
+pip install -r requirements.txt
+python main.py
+```
+
+## ⚙️ Configuration
+
+Credentials and IPs are **not** kept in the repository. On the first run,
+inform the controller's host/username/password through the interface itself — the
+settings are saved in `config.json` (which is in `.gitignore`).
+
+You can also start from the template:
+
+```bash
+cp config.example.json config.json
+# edit config.json with the real values
+```
+
+| Field                 | Description                                                      |
+|-----------------------|------------------------------------------------------------------|
+| `username` / password | UniFi Controller credentials (password is obfuscated in file).   |
+| `port`                | Controller port (default `8443`).                                |
+| `last_ip`             | Last accessed controller.                                        |
+| `custom_ips`          | Additional controller IPs to monitor.                            |
+| `wlan_company_filter` | Company SSID keyword used to filter WLANs.                       |
+
+The default network map (`models/network_map.py`) uses example addresses from
+ranges reserved for documentation (**RFC 5737**). Register the real IPs of
+your units in `custom_ips` in the local `config.json`.
+
+## 🗂️ Structure
+
+```
+wifi_manager/
+├── main.py                 # Entry point
+├── config.example.json     # Configuration template (no secrets)
+├── controllers/            # Orchestration (app_controller)
+├── models/                 # config, unifi_api, network_map, cpf_validator
+├── views/                  # Interface (CustomTkinter)
+├── utils/                  # logger, reports
+└── resources/icon/         # Icon
+```
+
+## 🔒 Security
+
+- Credentials, real IPs, and logs are **not** versioned (see `.gitignore`).
+- Password "obfuscation" in `config.json` is only to prevent display in plain
+  text — it is **not** strong encryption. Protect the file in the usage environment.
+
+## 📄 License
+
+> ⚠️ **Repository made available for portfolio purposes only.** The code can
+> be viewed, but **cannot** be copied, downloaded, used, or
+> reused in other projects. See the [License](#-license) section and the
+> [`LICENSE`](./LICENSE) file.
+
+---
+
+# 📶 UniFi WiFi Manager (Português)
 
 Aplicação desktop para **gerenciamento e monitoramento de redes Wi-Fi** baseadas
 em controladores **UniFi (Ubiquiti)**. Permite verificar o status dos controllers
@@ -106,4 +185,7 @@ considerando a semana de segunda-feira a domingo. Os arquivos ficam na pasta
 
 ## 📄 Licença
 
-Distribuído sob a licença MIT. Veja [LICENSE](LICENSE).
+> ⚠️ **Repositório disponibilizado apenas para portfólio.** O código pode
+> ser visualizado, mas **não** pode ser copiado, baixado, usado ou
+> reaproveitado em outros projetos. Veja a seção [Licença](#-licença) e o
+> arquivo [`LICENSE`](./LICENSE).
