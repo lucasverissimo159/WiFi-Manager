@@ -96,6 +96,14 @@ wifi_manager/
 - A "ofuscação" da senha em `config.json` é apenas para evitar exibição em texto
   claro — **não** é criptografia forte. Proteja o arquivo no ambiente de uso.
 
+### Logs da aplicação
+
+As mensagens exibidas na aba **Log** são salvas em arquivos `.txt` diários,
+separados pelo usuário do Windows que executou o programa. Ao iniciar o
+aplicativo, semanas já encerradas são agrupadas em um `.zip` por usuário,
+considerando a semana de segunda-feira a domingo. Os arquivos ficam na pasta
+`logs` ao lado do executável.
+
 ## 📄 Licença
 
 Distribuído sob a licença MIT. Veja [LICENSE](LICENSE).

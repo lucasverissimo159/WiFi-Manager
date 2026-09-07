@@ -25,11 +25,14 @@ class ConfigManager:
         "mode": "controller",
         "central_host": "",         # IP/host do controlador central (modo "site")
         "sites": [],                # lista de {"name": ..., "code": ...} (modo "site")
+        "excluded_sites": [],       # sites removidos, mas restauráveis
+        "deleted_sites": [],        # sites excluídos permanentemente
         "last_site": "",            # código do último site conectado
         "validate_cpf_online": True,
         "theme": "dark",
         "custom_ips": [],
         "excluded_ips": [],
+        "deleted_ips": [],
         "hosts_initialized": False,  # True após migração dos IPs padrão
         "excluded_ips": [],
         # Logging

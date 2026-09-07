@@ -307,7 +307,7 @@ class MainWindow(ctk.CTk):
         self.tab_buttons = {}
         for key, label, w in [("log", "Log", 80), ("devices", "Dispositivos", 110),
                                ("vouchers", "Vouchers", 100), ("settings", "⚙ Configurações", 130),
-                               ("hosts", "🖥 Hosts", 90)]:
+                               ("hosts", "🖥 Hosts", 90), ("sites", "Sites", 80)]:
             btn = ctk.CTkButton(tf, text=label, width=w, height=DIMS["btn_height_small"],
                                  font=FONTS["tab"], fg_color=COLORS["bg_input"],
                                  hover_color=COLORS["bg_hover"], text_color=COLORS["text_secondary"],
@@ -332,6 +332,9 @@ class MainWindow(ctk.CTk):
         self.hosts_frame = ctk.CTkScrollableFrame(self.tab_content, fg_color=COLORS["bg_input"],
                                                    corner_radius=8)
         self._build_hosts_tab()
+        self.sites_frame = ctk.CTkScrollableFrame(self.tab_content, fg_color=COLORS["bg_input"],
+                               corner_radius=8)
+        self._build_sites_tab()
 
     def _build_settings(self):
         f = self.settings_frame
@@ -444,9 +447,6 @@ class MainWindow(ctk.CTk):
         self.lbl_site_status = ctk.CTkLabel(f, text="", font=FONTS["small"],
                                             text_color=COLORS["accent_green"])
         self.lbl_site_status.pack(anchor="w", padx=16, pady=(4, 2))
-        self.sites_list = ctk.CTkFrame(f, fg_color="transparent")
-        self.sites_list.pack(anchor="w", padx=16, fill="x", pady=(0, 14))
-
         self._div(f)
 
         self.btn_save_cfg = ctk.CTkButton(f, text="💾  Salvar Configurações", font=FONTS["body_bold"],
@@ -589,6 +589,16 @@ class MainWindow(ctk.CTk):
 
         self.hosts_ip_list = ctk.CTkFrame(f, fg_color="transparent")
         self.hosts_ip_list.pack(anchor="w", padx=16, fill="x", pady=(8, 16))
+
+    def _build_sites_tab(self):
+        f = self.sites_frame
+        ctk.CTkLabel(f, text="SITES CADASTRADOS", font=FONTS["section"],
+                      text_color=COLORS["accent_blue"]).pack(anchor="w", padx=16, pady=(16, 2))
+        ctk.CTkLabel(f, text="Visualização das lojas cadastradas para o modo Site.",
+                      font=FONTS["small"], text_color=COLORS["text_muted"],
+                      wraplength=500).pack(anchor="w", padx=16, pady=(0, 8))
+        self.sites_list = ctk.CTkFrame(f, fg_color="transparent")
+        self.sites_list.pack(anchor="w", padx=16, fill="x", pady=(8, 16))
 
     # ═══════════ HELPERS ═══════════
 

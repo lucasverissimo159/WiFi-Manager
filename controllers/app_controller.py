@@ -21,6 +21,7 @@ from models import (
 )
 from views.styles import COLORS, FONTS, apply_theme
 from views import MainWindow
+from utils.logger import append_ui_log, archive_completed_ui_logs
 from utils.reports import gerar_relatorio_pdf, gerar_relatorio_txt
 
 
@@ -40,6 +41,12 @@ class AppController:
         self._poll_job = None
         self._first_activation = True
         self._log_history: list[str] = []
+        self._hosts_expanded = False
+        self._audit_log_user = os.environ.get("USERNAME", os.environ.get("USER", "default")).lower()
+        self._audit_log_day = datetime.now().date()
+        self._audit_log_retention = int(self.config.get("log_retention", 30))
+        archive_completed_ui_logs(self.app_dir / "logs", self._audit_log_user,
+                      self._audit_log_retention)
 
         self._overview_rows: dict[str, dict] = {}
         self._overview_order: list[str] = []  # preserva ordem antiga da lista (inserção)
@@ -125,7 +132,8 @@ class AppController:
         """Lista todos os IPs disponíveis (padrão + custom, sem excluídos)."""
         port = self.config.get("port", "8443")
         custom = self.config.get("custom_ips", [])
-        excluded = set(self.config.get("excluded_ips", []))
+        excluded = (set(self.config.get("excluded_ips", [])) |
+                set(self.config.get("deleted_ips", [])))
         return [l["ip"] for l in gerar_ips_lojas(port, custom) if l["ip"] not in excluded]
 
     def _targets(self) -> list[dict]:
@@ -155,7 +163,8 @@ class AppController:
             return targets
 
         # modo "controller" (padrão)
-        excluded = set(self.config.get("excluded_ips", []))
+        excluded = (set(self.config.get("excluded_ips", [])) |
+                set(self.config.get("deleted_ips", [])))
         custom = self.config.get("custom_ips", [])
         return [{"key": l["ip"], "host": l["ip"], "site": "default", "label": l["ip"]}
                 for l in gerar_ips_lojas(port, custom) if l["ip"] not in excluded]
@@ -386,13 +395,13 @@ class AppController:
         self.current_tab = tab
         w = self.window
         for widget in [w.log_textbox, w.devices_textbox, w.vouchers_textbox,
-                        w.settings_frame, w.hosts_frame]:
+                        w.settings_frame, w.hosts_frame, w.sites_frame]:
             widget.grid_forget()
         for btn in w.tab_buttons.values():
             btn.configure(fg_color=COLORS["bg_input"], text_color=COLORS["text_secondary"], font=FONTS["tab"])
         m = {"log": w.log_textbox, "devices": w.devices_textbox,
              "vouchers": w.vouchers_textbox, "settings": w.settings_frame,
-             "hosts": w.hosts_frame}
+             "hosts": w.hosts_frame, "sites": w.sites_frame}
         t = m.get(tab)
         if t:
             t.grid(row=0, column=0, sticky="nsew")
@@ -403,9 +412,15 @@ class AppController:
     # ════════════════════════════════════════
 
     def _log(self, msg, level="info"):
+        current_day = datetime.now().date()
+        if current_day != self._audit_log_day:
+            archive_completed_ui_logs(self.app_dir / "logs", self._audit_log_user,
+                                      self._audit_log_retention)
+            self._audit_log_day = current_day
         ts = datetime.now().strftime("%H:%M:%S")
         px = {"info": "ℹ️", "success": "✅", "warning": "⚠️", "error": "❌"}.get(level, "•")
         line = f"[{ts}] {px}  {msg}\n"
+        append_ui_log(self.app_dir / "logs", self._audit_log_user, line)
         self._log_history.append(line)
         if len(self._log_history) > 500:
             self._log_history = self._log_history[-500:]
@@ -478,6 +493,7 @@ class AppController:
             return
         custom = self.config.get("custom_ips", [])
         excluded = self.config.get("excluded_ips", [])
+        deleted = self.config.get("deleted_ips", [])
         if ip in custom:
             self._show_add_status(f"⚠  {ip} já está na lista.", warning=True)
             return
@@ -485,6 +501,9 @@ class AppController:
         if ip in excluded:
             excluded.remove(ip)
             self.config.set("excluded_ips", excluded)
+        if ip in deleted:
+            deleted.remove(ip)
+            self.config.set("deleted_ips", deleted)
         custom.append(ip)
         self.config.set("custom_ips", custom)
         self.config.save()
@@ -507,6 +526,24 @@ class AppController:
         self.config.save()
         self._refresh_hosts_list()
         self._log(f"Host removido: {ip}", "info")
+        self._reset_overview_and_rescan()
+
+    def _delete_host_permanently(self, ip):
+        """Oculta permanentemente um host removido da lista gerada."""
+        if not messagebox.askyesno(
+                "Excluir host permanentemente",
+                f"Excluir permanentemente o host {ip}?\n\n"
+                "Ele não aparecerá mais na lista nem poderá ser restaurado."):
+            return
+        deleted = self.config.get("deleted_ips", [])
+        if ip not in deleted:
+            deleted.append(ip)
+        excluded = [item for item in self.config.get("excluded_ips", []) if item != ip]
+        self.config.set("deleted_ips", deleted)
+        self.config.set("excluded_ips", excluded)
+        self.config.save()
+        self._refresh_hosts_list()
+        self._log(f"Host excluído permanentemente: {ip}", "warning")
         self._reset_overview_and_rescan()
 
     def _restore_host(self, ip):
@@ -554,14 +591,22 @@ class AppController:
         if creds and not self._closing:
             self.window.after(200, lambda: self._run_scan(creds) if not self._closing else None)
 
-    def _refresh_hosts_list(self, query: str = ""):
+    def _refresh_hosts_list(self, query: str = "", reset_scroll: bool = False):
         """Popula a aba Hosts: ativos (com ✕ Remover) e excluídos (com ↩ Restaurar).
 
         Usa um frame interno regular como container dos itens para evitar
         problemas ao chamar winfo_children() + destroy() num CTkScrollableFrame.
         Se `query` for informado, exibe apenas hosts cujo IP contenha o texto.
         """
-        outer = self.window.hosts_ip_list   # CTkScrollableFrame (altura fixa ~6 itens)
+        outer = self.window.hosts_ip_list
+        scroll_frame = self.window.hosts_frame
+        canvas = getattr(scroll_frame, "_parent_canvas", None)
+        try:
+            scroll_position = canvas.yview()[0] if canvas is not None else 0.0
+        except Exception:
+            scroll_position = 0.0
+        if reset_scroll:
+            scroll_position = 0.0
 
         # Destroi apenas o wrapper interno (não os frames internos do CTK)
         for child in outer.winfo_children():
@@ -576,14 +621,15 @@ class AppController:
         port      = self.config.get("port", "8443")
         custom    = self.config.get("custom_ips", [])
         excluded  = set(self.config.get("excluded_ips", []))
+        deleted   = set(self.config.get("deleted_ips", []))
 
         from models import gerar_ips_lojas
         ip_sort      = lambda x: tuple(int(p) for p in x.split('.'))
         default_set  = {l["ip"] for l in gerar_ips_lojas(port)}          # sem custom
         todos        = gerar_ips_lojas(port, custom)
         q            = query.strip().lower()
-        ativos       = sorted([l["ip"] for l in todos if l["ip"] not in excluded and (not q or q in l["ip"])], key=ip_sort)
-        inativos     = sorted([l["ip"] for l in todos if l["ip"] in excluded     and (not q or q in l["ip"])], key=ip_sort)
+        ativos       = sorted([l["ip"] for l in todos if l["ip"] not in (excluded | deleted) and (not q or q in l["ip"])], key=ip_sort)
+        inativos     = sorted([l["ip"] for l in todos if l["ip"] in excluded and l["ip"] not in deleted and (not q or q in l["ip"])], key=ip_sort)
 
         def _row(ip, removable=True):
             is_default = ip in default_set
@@ -609,6 +655,11 @@ class AppController:
                                hover_color=COLORS["hover_orange"], text_color=COLORS["accent_orange"],
                                command=lambda i=ip: self._restore_host(i)
                                ).pack(side="right", padx=(0, 6))
+                ctk.CTkButton(row, text="Excluir", width=64, height=24, corner_radius=4,
+                               font=FONTS["small_bold"], fg_color=COLORS["bg_error"],
+                               hover_color=COLORS["hover_red"], text_color=COLORS["accent_red"],
+                               command=lambda i=ip: self._delete_host_permanently(i)
+                               ).pack(side="right", padx=(0, 4))
 
         LIMIT = 5
 
@@ -637,18 +688,22 @@ class AppController:
                 btn_expand.pack(anchor="w", pady=(4, 0))
 
                 def _toggle(ef=extra_frame, ips=extras, btn=btn_expand):
-                    if ef.winfo_ismapped():
-                        ef.pack_forget()
-                        btn.configure(text=f"▼  Ver mais {len(ips)} host(s)")
-                        self._scroll_frame_to_top(self.window.hosts_frame)
+                    if self._hosts_expanded:
+                        self._hosts_expanded = False
+                        # Reconstrói a lista para renovar o canvas, como ao trocar de aba.
+                        self._refresh_hosts_list(query=query, reset_scroll=True)
+                        return
                     else:
                         ef.pack(fill="x", before=btn)
+                        self._hosts_expanded = True
                         btn.configure(text=f"▲  Recolher")
-                        for ip in ips:
-                            # cria as linhas dentro do extra_frame (só na primeira expansão)
-                            if not ef.winfo_children():
-                                for xip in ips:
-                                    _row_in(xip, ef, removable=True)
+                        if not ef.winfo_children():
+                            for xip in ips:
+                                _row_in(xip, ef, removable=True)
+                    scroll_frame.update_idletasks()
+                    if canvas is not None:
+                        canvas.configure(scrollregion=canvas.bbox("all"))
+                    scroll_frame.after_idle(lambda: scroll_frame.update_idletasks())
 
                 def _row_in(ip, parent, removable=True):
                     is_default = ip in default_set
@@ -674,8 +729,15 @@ class AppController:
                                        hover_color=COLORS["hover_orange"], text_color=COLORS["accent_orange"],
                                        command=lambda i=ip: self._restore_host(i)
                                        ).pack(side="right", padx=(0, 6))
+                        ctk.CTkButton(row, text="Excluir", width=64, height=24, corner_radius=4,
+                                       font=FONTS["small_bold"], fg_color=COLORS["bg_error"],
+                                       hover_color=COLORS["hover_red"], text_color=COLORS["accent_red"],
+                                       command=lambda i=ip: self._delete_host_permanently(i)
+                                       ).pack(side="right", padx=(0, 4))
 
                 btn_expand.configure(command=_toggle)
+                if self._hosts_expanded:
+                    _toggle()
 
         # ── Removidos ──
         if inativos:
@@ -685,6 +747,17 @@ class AppController:
                           ).pack(anchor="w", pady=(0, 4))
             for ip in inativos:
                 _row(ip, removable=False)
+
+        def _restore_scroll_position():
+            try:
+                scroll_frame.update_idletasks()
+                current_canvas = getattr(scroll_frame, "_parent_canvas", None)
+                if current_canvas is not None:
+                    current_canvas.yview_moveto(scroll_position)
+            except Exception:
+                pass
+
+        scroll_frame.after_idle(_restore_scroll_position)
 
     def _show_add_status(self, msg: str, warning: bool = False):
         """Feedback inline no campo de adicionar host (desaparece em 3s)."""
@@ -843,9 +916,16 @@ class AppController:
             self._show_site_status(f"⚠  Código inválido: '{code}'.", warning=True)
             return
         sites = self.config.get("sites", [])
+        excluded_sites = self.config.get("excluded_sites", [])
+        deleted_sites = self.config.get("deleted_sites", [])
         if any((s.get("code") or "").strip() == code for s in sites):
             self._show_site_status(f"⚠  O código '{code}' já está cadastrado.", warning=True)
             return
+        if any((s.get("code") or "").strip() == code for s in deleted_sites):
+            self._show_site_status(f"⚠  O código '{code}' foi excluído permanentemente.", warning=True)
+            return
+        excluded_sites = [s for s in excluded_sites if (s.get("code") or "").strip() != code]
+        self.config.set("excluded_sites", excluded_sites)
         sites.append({"name": name, "code": code})
         self.config.set("sites", sites)
         self.config.save()
@@ -857,13 +937,55 @@ class AppController:
         self._show_site_status(f"✓  {name} adicionado.")
 
     def _on_remove_site(self, code):
-        sites = [s for s in self.config.get("sites", [])
-                 if (s.get("code") or "").strip() != code]
+        sites = self.config.get("sites", [])
+        removed = next((s for s in sites if (s.get("code") or "").strip() == code), None)
+        if removed is None:
+            return
+        sites = [s for s in sites if (s.get("code") or "").strip() != code]
         self.config.set("sites", sites)
+        excluded_sites = self.config.get("excluded_sites", [])
+        if not any((s.get("code") or "").strip() == code for s in excluded_sites):
+            excluded_sites.append(removed)
+        self.config.set("excluded_sites", excluded_sites)
         self.config.save()
         self._refresh_sites_ui()
         self._refresh_site_picker()
         self._log(f"Site removido: {code}", "warning")
+
+    def _restore_site(self, code):
+        excluded_sites = self.config.get("excluded_sites", [])
+        restored = next((s for s in excluded_sites
+                         if (s.get("code") or "").strip() == code), None)
+        if restored is None:
+            return
+        self.config.set("excluded_sites", [s for s in excluded_sites
+                                            if (s.get("code") or "").strip() != code])
+        sites = self.config.get("sites", [])
+        if not any((s.get("code") or "").strip() == code for s in sites):
+            sites.append(restored)
+        self.config.set("sites", sites)
+        self.config.save()
+        self._refresh_sites_ui()
+        self._refresh_site_picker()
+        self._log(f"Site restaurado: {code}", "success")
+
+    def _delete_site_permanently(self, code):
+        if not messagebox.askyesno(
+                "Excluir site permanentemente",
+                f"Excluir permanentemente o site {code}?\n\n"
+                "Ele não aparecerá mais na lista nem poderá ser restaurado."):
+            return
+        excluded_sites = [s for s in self.config.get("excluded_sites", [])
+                          if (s.get("code") or "").strip() != code]
+        deleted_sites = self.config.get("deleted_sites", [])
+        if not any((s.get("code") or "").strip() == code for s in deleted_sites):
+            deleted_sites.append({"name": code, "code": code})
+        self.config.set("excluded_sites", excluded_sites)
+        self.config.set("deleted_sites", deleted_sites)
+        self.config.save()
+        self._refresh_sites_ui()
+        self._refresh_site_picker()
+        self._log(f"Site excluído permanentemente: {code}", "warning")
 
     def _show_site_status(self, text, warning=False):
         try:
@@ -874,7 +996,7 @@ class AppController:
             pass
 
     def _refresh_sites_ui(self):
-        """Reconstrói a lista de sites cadastrados na aba Configurações."""
+        """Reconstrói a lista de sites ativos e removidos na aba Sites."""
         w = self.window
         holder = getattr(w, "sites_list", None)
         if holder is None:
@@ -885,7 +1007,8 @@ class AppController:
             except Exception:
                 pass
         opts = self._site_options()
-        if not opts:
+        excluded_sites = self.config.get("excluded_sites", [])
+        if not opts and not excluded_sites:
             ctk.CTkLabel(holder, text="Nenhum site cadastrado.", font=FONTS["small"],
                           text_color=COLORS["text_muted"]).pack(anchor="w", padx=4, pady=4)
             return
@@ -896,11 +1019,33 @@ class AppController:
                           text_color=COLORS["text_primary"]).pack(side="left", padx=(10, 6), pady=6)
             ctk.CTkLabel(row, text=f"({code})", font=FONTS["mono_small"],
                           text_color=COLORS["text_muted"]).pack(side="left")
-            ctk.CTkButton(row, text="✕", width=32, height=28, font=FONTS["small_bold"],
-                           fg_color=COLORS["btn_secondary"], hover_color=COLORS["bg_hover"],
-                           border_width=1, border_color=COLORS["border"],
+            ctk.CTkButton(row, text="✕ Remover", width=90, height=28, font=FONTS["small_bold"],
+                           fg_color=COLORS["bg_error"], hover_color=COLORS["hover_red"],
                            text_color=COLORS["accent_red"],
                            command=lambda c=code: self._on_remove_site(c)).pack(side="right", padx=8, pady=6)
+
+        if excluded_sites:
+            ctk.CTkFrame(holder, fg_color=COLORS["border"], height=1).pack(fill="x", pady=(10, 6))
+            ctk.CTkLabel(holder, text=f"SITES REMOVIDOS  ({len(excluded_sites)})",
+                          font=FONTS["small_bold"], text_color=COLORS["text_secondary"]
+                          ).pack(anchor="w", pady=(0, 4))
+            for site in excluded_sites:
+                code = (site.get("code") or "").strip()
+                name = (site.get("name") or code).strip()
+                row = ctk.CTkFrame(holder, fg_color=COLORS["bg_card"], corner_radius=6)
+                row.pack(fill="x", pady=2)
+                ctk.CTkLabel(row, text=name, font=FONTS["small_bold"],
+                              text_color=COLORS["text_primary"]).pack(side="left", padx=(10, 6), pady=6)
+                ctk.CTkLabel(row, text=f"({code})", font=FONTS["mono_small"],
+                              text_color=COLORS["text_muted"]).pack(side="left")
+                ctk.CTkButton(row, text="↩ Restaurar", width=90, height=28,
+                               font=FONTS["small_bold"], fg_color=COLORS["bg_warning"],
+                               hover_color=COLORS["hover_orange"], text_color=COLORS["accent_orange"],
+                               command=lambda c=code: self._restore_site(c)).pack(side="right", padx=(0, 4), pady=6)
+                ctk.CTkButton(row, text="Excluir", width=64, height=28,
+                               font=FONTS["small_bold"], fg_color=COLORS["bg_error"],
+                               hover_color=COLORS["hover_red"], text_color=COLORS["accent_red"],
+                               command=lambda c=code: self._delete_site_permanently(c)).pack(side="right", padx=(0, 4), pady=6)
 
     def _on_connect_done(self, ok, msg):
         w = self.window
@@ -1298,7 +1443,14 @@ class AppController:
             defaultextension=".pdf", filetypes=[("PDF", "*.pdf"), ("Texto", "*.txt")])
         if not fp:
             return
-        ip_loja = self.window.entry_ip.get().strip() + ":" + self.window.cfg_port.get().strip()
+        mode = self.config.get("mode", "controller")
+        if mode == "site":
+            host = (self.config.get("central_host", "") or "").strip()
+            code = self._selected_site_code()
+            label = self._site_label_for_code(code) or code
+            ip_loja = f"{label} [site {code}] em {host}:{self.config.get('port', '8443')}"
+        else:
+            ip_loja = self.window.entry_ip.get().strip() + ":" + self.window.cfg_port.get().strip()
         try:
             result = (gerar_relatorio_txt if fp.endswith('.txt') else gerar_relatorio_pdf)(
                 self.vouchers_irregulares, fp, ip_loja)

@@ -11,7 +11,7 @@
 import sys
 import logging
 import re
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from logging.handlers import TimedRotatingFileHandler
 from zipfile import ZipFile, ZIP_DEFLATED
@@ -72,6 +72,85 @@ def _purge_old_zips(log_dir: Path, base_stem: str, retention: int) -> None:
             logging.debug(f"[LOG] Rotação: removido {old.name}")
         except Exception as e:
             logging.warning(f"[LOG] Não foi possível remover {old.name}: {e}")
+
+
+def _safe_user_name(user_name: str) -> str:
+    """Converte o nome do usuário em um trecho seguro para nome de arquivo."""
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", (user_name or "default").strip())
+    return safe.strip("._") or "default"
+
+
+def _week_start(day: date) -> date:
+    """Retorna a segunda-feira da semana que contém `day`."""
+    return day - timedelta(days=day.weekday())
+
+
+def _audit_prefix(user_name: str) -> str:
+    return f"wifi_manager_{_safe_user_name(user_name)}"
+
+
+def append_ui_log(log_dir: Path, user_name: str, line: str) -> None:
+    """Acrescenta uma linha da aba Log ao arquivo TXT do dia atual."""
+    log_dir = Path(log_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{_audit_prefix(user_name)}_{date.today():%Y-%m-%d}.txt"
+    with (log_dir / filename).open("a", encoding="utf-8") as audit_file:
+        audit_file.write(line)
+
+
+def archive_completed_ui_logs(
+    log_dir: Path,
+    user_name: str,
+    retention: int = 30,
+    today: date | None = None,
+) -> None:
+    """Agrupa os TXT de semanas encerradas em ZIPs separados por usuário."""
+    log_dir = Path(log_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    current_week = _week_start(today or date.today())
+    prefix = _audit_prefix(user_name)
+    daily_pattern = re.compile(
+        rf"^{re.escape(prefix)}_(\d{{4}}-\d{{2}}-\d{{2}})\.txt$"
+    )
+    files_by_week: dict[date, list[Path]] = {}
+
+    for path in log_dir.glob(f"{prefix}_????-??-??.txt"):
+        match = daily_pattern.match(path.name)
+        if not match:
+            continue
+        try:
+            file_day = datetime.strptime(match.group(1), "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        week = _week_start(file_day)
+        if week < current_week:
+            files_by_week.setdefault(week, []).append(path)
+
+    for week, daily_files in sorted(files_by_week.items()):
+        daily_files.sort()
+        zip_path = log_dir / f"{prefix}_semana_{week:%Y-%m-%d}.zip"
+        temp_path = zip_path.with_suffix(".zip.tmp")
+        try:
+            with ZipFile(temp_path, mode="w", compression=ZIP_DEFLATED, compresslevel=9) as archive:
+                for daily_file in daily_files:
+                    archive.write(daily_file, arcname=daily_file.name)
+            temp_path.replace(zip_path)
+            for daily_file in daily_files:
+                daily_file.unlink(missing_ok=True)
+        except Exception as exc:
+            logging.warning(f"[LOG] Não foi possível arquivar a semana {week}: {exc}")
+            temp_path.unlink(missing_ok=True)
+
+    weekly_files = sorted(
+        log_dir.glob(f"{prefix}_semana_????-??-??.zip"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    for old_zip in weekly_files[max(int(retention), 1):]:
+        try:
+            old_zip.unlink()
+        except Exception as exc:
+            logging.warning(f"[LOG] Não foi possível remover {old_zip.name}: {exc}")
 
 
 # ──────────────────────────────────────────────────────────
