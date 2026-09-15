@@ -1,3 +1,61 @@
+Copyright (c) 2026 Lucas Veríssimo. All rights reserved.
+
+VIEW-ONLY LICENSE
+
+This repository is made publicly available exclusively for demonstration and
+portfolio evaluation purposes. It is NOT free software or open source software,
+even though the code is publicly visible.
+
+1. PERMISSIONS
+
+   You are permitted only to:
+   a) View the source code of this repository through the GitHub interface (or
+      equivalent platform) for portfolio evaluation, recruitment, or technical
+      review purposes.
+
+2. PROHIBITIONS
+
+   Without prior written authorization from the author, it is expressly prohibited to:
+   a) Copy, reproduce, download (maintained clone/download/fork), or store
+      this code, in whole or in part;
+   b) Use, execute, install, or deploy this code, in whole or in part, in any
+      environment or for any purpose;
+   c) Modify, adapt, or create derivative works based on this code;
+   d) Redistribute, sublicense, publish, or make this code available, in whole
+      or in part, in any other repository, product, or medium;
+   e) Use this code, in whole or in part, in personal, academic, or commercial
+      projects, whether your own or belonging to third parties;
+   f) Use this code to train, fine-tune, or evaluate machine learning or artificial
+      intelligence models.
+
+3. NO LICENSE GRANTED
+
+   Nothing in this document shall be construed as granting, by implication,
+   estoppel, or otherwise, any license or right under any patent, trademark,
+   copyright, or other intellectual property right of the author, beyond the
+   viewing rights described in Section 1.
+
+4. DISCLAIMER OF WARRANTIES
+
+   THIS CODE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED. THE AUTHOR SHALL NOT BE LIABLE FOR ANY DAMAGES ARISING FROM THE
+   UNAUTHORIZED USE OF THIS CODE.
+
+5. CONTACT
+
+   To request permission for use beyond the scope of this license, please contact
+   the author directly.
+
+---
+
+Note: Since this is not a license recognized by the Open Source Initiative (OSI),
+this repository should not be labeled as "open source". In the absence of an
+explicit license, copyright law automatically reserves all rights to the
+author — this file merely makes that condition explicit and details what is (and
+what is not) permitted.
+
+===============================================================================
+
 Copyright (c) 2026 Lucas Veríssimo. Todos os direitos reservados.
 
 LICENÇA DE APENAS VISUALIZAÇÃO (VIEW-ONLY LICENSE)
